@@ -1,0 +1,192 @@
+/*
+ * Software License Agreement (BSD-3 License)
+ *
+ * Copyright (c) 2025 Ian Reid, BYU MAGICC Lab.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * * Redistributions of source code must retain the above copyright notice, this
+ *   list of conditions and the following disclaimer.
+ *
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
+ *
+ * * Neither the name of the copyright holder nor the names of its
+ *   contributors may be used to endorse or promote products derived from
+ *   this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/**
+ * @file path_follower_lines_orbits.hpp
+ * 
+ * Implements ROS interfaces for path following.
+ * 
+ * @author Ian Reid <ian.young.reid@gmail.com>
+*/
+
+#include "path_follower/path_follower_lines_orbits.hpp"
+#include "path_follower/path_follower_ros.hpp"
+
+namespace rosplane
+{
+
+PathFollowerROS::PathFollowerROS()
+    : Node("path_follower")
+    , params_(this)
+    , params_initialized_(false)
+{
+  vehicle_state_sub_ = this->create_subscription<rosplane_msgs::msg::State>(
+    "estimated_state", 10, std::bind(&PathFollowerROS::vehicle_state_callback, this, _1));
+
+  current_path_sub_ = this->create_subscription<rosplane_msgs::msg::CurrentPath>(
+    "current_path", 100, std::bind(&PathFollowerROS::current_path_callback, this, _1));
+
+  controller_commands_pub_ =
+    this->create_publisher<rosplane_msgs::msg::ControllerCommands>("controller_command", 1);
+
+  // Define the callback to handle on_set_parameter_callback events
+  parameter_callback_handle_ = this->add_on_set_parameters_callback(
+    std::bind(&PathFollowerROS::parametersCallback, this, std::placeholders::_1));
+
+  // Declare and set parameters with the ROS2 system
+  declare_parameters();
+  params_.set_parameters();
+
+  params_initialized_ = true;
+
+  // Now that the parameters have been set and loaded from the launch file, create the timer.
+  set_timer();
+
+  state_init_ = false;
+  current_path_init_ = false;
+}
+
+void PathFollowerROS::set_timer()
+{
+  // Convert the frequency to a period in microseconds
+  double frequency = params_.get_double("controller_commands_pub_frequency");
+  timer_period_ = std::chrono::microseconds(static_cast<long long>(1.0 / frequency * 1e6));
+
+  update_timer_ =
+    rclcpp::create_timer(this, this->get_clock(), timer_period_, std::bind(&PathFollowerROS::update, this));
+}
+
+void PathFollowerROS::update()
+{
+
+  Output output;
+
+  if (state_init_ == true && current_path_init_ == true) {
+    follow(input_, output);
+    rosplane_msgs::msg::ControllerCommands msg;
+
+    rclcpp::Time now = this->get_clock()->now();
+
+    // Populate the message with the required information
+    msg.header.stamp = now;
+    msg.chi_c = output.chi_c;
+    msg.va_c = output.va_c;
+    msg.h_c = output.h_c;
+    msg.phi_ff = output.phi_ff;
+
+    controller_commands_pub_->publish(msg);
+  }
+}
+
+void PathFollowerROS::vehicle_state_callback(const rosplane_msgs::msg::State::SharedPtr msg)
+{
+  input_.pn = msg->position[0]; /** position north */
+  input_.pe = msg->position[1]; /** position east */
+  input_.h = -msg->position[2]; /** altitude */
+  input_.chi = msg->chi;
+  input_.psi = msg->psi;
+  input_.va = msg->va;
+
+  RCLCPP_DEBUG_STREAM(this->get_logger(), "FROM STATE -- input.chi: " << input_.chi);
+
+  state_init_ = true;
+}
+
+void PathFollowerROS::current_path_callback(const rosplane_msgs::msg::CurrentPath::SharedPtr msg)
+{
+  if (msg->path_type == msg->LINE_PATH) {
+    input_.p_type = PathType::LINE;
+  } else if (msg->path_type == msg->ORBIT_PATH) {
+    input_.p_type = PathType::ORBIT;
+  }
+
+  // Populate the input message with the correct information
+  input_.va_d = msg->va_d;
+  for (int i = 0; i < 3; i++) {
+    input_.r_path[i] = msg->r[i];
+    input_.q_path[i] = msg->q[i];
+    input_.c_orbit[i] = msg->c[i];
+  }
+  input_.rho_orbit = msg->rho;
+  input_.lam_orbit = msg->lamda;
+  current_path_init_ = true;
+}
+
+rcl_interfaces::msg::SetParametersResult
+PathFollowerROS::parametersCallback(const std::vector<rclcpp::Parameter> & parameters)
+{
+  rcl_interfaces::msg::SetParametersResult result;
+  result.successful = false;
+  result.reason = "One of the parameters given is not a parameter of the path_follower node";
+
+  // Update the param_manager object with the new parameters
+  bool success = params_.set_parameters_callback(parameters);
+  if (success) {
+    result.successful = true;
+    result.reason = "success";
+  }
+
+  // Check to see if the timer frequency parameter has changed
+  if (params_initialized_ && success) {
+    double frequency = params_.get_double("controller_commands_pub_frequency");
+
+    std::chrono::microseconds curr_period =
+      std::chrono::microseconds(static_cast<long long>(1.0 / frequency * 1e6));
+    if (timer_period_ != curr_period) {
+      update_timer_->cancel();
+      set_timer();
+    }
+  }
+
+  return result;
+}
+
+void PathFollowerROS::declare_parameters()
+{
+  params_.declare_double("controller_commands_pub_frequency", 10.0);
+  params_.declare_double("chi_infty", .5);
+  params_.declare_double("k_path", 0.05);
+  params_.declare_double("k_orbit", 4.0);
+  params_.declare_int("update_rate", 100);
+  params_.declare_double("gravity", 9.81);
+}
+
+} // namespace rosplane
+
+int main(int argc, char ** argv)
+{
+  rclcpp::init(argc, argv);
+
+  rclcpp::spin(std::make_shared<rosplane::PathFollowerLinesOrbits>());
+  return 0;
+}

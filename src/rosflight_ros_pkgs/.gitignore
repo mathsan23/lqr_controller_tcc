@@ -1,0 +1,25 @@
+*~
+*.swp
+*.bak
+*.user
+.vscode/
+.idea/
+.DS_Store
+.cproject
+.project
+.settings
+*.pyc
+*.gch
+*.cbp
+*.bin
+*CMakeFiles*
+*catkin_generated*
+*Makefile
+build
+install
+log
+cmake_commands.sh
+
+# Doxygen
+html
+latex

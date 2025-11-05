@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>rosflight_pkgs</name>
+  <version>2.0.0</version>
+  <description>ROS interface for the ROSflight autopilot stack</description>
+
+  <maintainer email="brandonsutherland2@gmail.com">Brandon Sutherland</maintainer>
+
+  <author email="daniel.p.koch@gmail.com">Daniel Koch</author>
+  <author email="superjax08@gmail.com">James Jackson</author>
+
+  <license>BSD</license>
+
+  <url type="website">https://rosflight.org</url>
+  <url type="repository">https://github.com/rosflight/rosflight</url>
+  <url type="bugtracker">https://github.com/rosflight/rosflight/issues</url>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>rosflight_io</exec_depend>
+  <exec_depend>rosflight_msgs</exec_depend>
+  <exec_depend>rosflight_sim</exec_depend>
+  <exec_depend>rosflight_gcs</exec_depend>
+
+  <export>
+    <architecture_independent/>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

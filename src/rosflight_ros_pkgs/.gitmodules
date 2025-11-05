@@ -1,0 +1,3 @@
+[submodule "rosflight_sim/include/rosflight_sim/rosflight_firmware"]
+	path = rosflight_firmware
+	url = https://github.com/rosflight/rosflight_firmware.git
