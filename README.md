@@ -11,10 +11,8 @@ Discrete LQR controller (with course-error integrator) for fixed-wing UAVs on RO
   - https://docs.rosflight.org/git-main/user-guide/ros2-setup/#installing-rosflight
 - Typical:
   ```bash
-  mkdir -p ~/dev/rosflight_ws/src
-  cd ~/dev/rosflight_ws/src
-  # clone rosflight_ros_pkgs per docs
-  cd ~/dev/rosflight_ws
+  # clone this entire repo and
+  cd ~/path/to/your/folder/lqr_controller_tcc
   colcon build
   source install/setup.bash
   ```
@@ -28,15 +26,6 @@ chmod 0700 /run/user/1000
 ```
 - NVIDIA WSL2 guide: https://docs.nvidia.com/cuda/wsl-user-guide/index.html
 
-## Install ROSPlane (same workspace)
-- Follow:
-  - https://docs.rosflight.org/git-main/user-guide/installation/installation-sim/
-- Rebuild:
-  ```bash
-  cd ~/dev/rosflight_ws
-  colcon build
-  source install/setup.bash
-  ```
 
 ## Run simulation
 1) Launch Gazebo:
